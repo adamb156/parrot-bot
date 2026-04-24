@@ -1,0 +1,21 @@
+{
+  "name": "voice-transcriber-bot",
+  "version": "1.0.0",
+  "description": "Discord bot that transcribes voice messages sent in text channels.",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "register": "node src/registerCommands.js",
+    "dev": "node --watch src/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5",
+    "openai": "^4.67.3",
+    "undici": "^6.20.1"
+  }
+}
