@@ -11,6 +11,12 @@ function getOpenAI() {
   return openaiClient;
 }
 
+function getSummaryProvider() {
+  if (process.env.OPENAI_API_KEY) return 'openai';
+  if (process.env.GROQ_API_KEY) return 'groq';
+  throw new Error('Brak klucza do podsumowan. Ustaw OPENAI_API_KEY albo GROQ_API_KEY w .env');
+}
+
 /**
  * @param {string} url - URL załącznika z Discorda
  * @param {string} filename
@@ -29,6 +35,105 @@ export async function transcribeFromUrl(url, filename, language = null) {
     return await transcribeGroq(file, language);
   }
   return await transcribeOpenAI(file, language);
+}
+
+/**
+ * @param {Array<{author: string, content: string}>} messages
+ * @param {number} periodHours
+ * @returns {Promise<string>}
+ */
+export async function summarizeChatMessages(messages, periodHours) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return 'Brak wiadomosci do podsumowania.';
+  }
+
+  const providerForSummary = getSummaryProvider();
+  const lines = [];
+  let currentSize = 0;
+  const MAX_CHARS = 45000;
+
+  for (const msg of messages) {
+    const line = `${msg.author}: ${msg.content}`.trim();
+    if (!line) continue;
+    if (currentSize + line.length + 1 > MAX_CHARS) break;
+    lines.push(line);
+    currentSize += line.length + 1;
+  }
+
+  if (!lines.length) {
+    return 'Brak tresci tekstowej do podsumowania.';
+  }
+
+  const systemPrompt =
+    'Jestes analitykiem rozmow Discord. Tworzysz tylko najwazniejsze tematy rozmowy, bez drobnych ciekawostek. ' +
+    'Kazdy temat opisujesz JEDNYM zdaniem. Ignoruj pojedyncze, malo istotne wpisy.';
+
+  const targetSentences = Math.max(3, Math.min(12, Math.round(periodHours * 1.2)));
+  const userPrompt = [
+    `Okres rozmowy: ostatnie ${periodHours}h.`,
+    `Masz zwrocic ${targetSentences} najwazniejszych tematow w punktach.`,
+    'Wymagania:',
+    '- Jedno zdanie = jeden temat.',
+    '- Wybieraj tematy, ktore mialy wyraznie wiecej wiadomosci.',
+    '- Pomijaj malo istotne detale i pojedyncze wzmianki.',
+    '- Odpowiedz po polsku.',
+    '',
+    'Wiadomosci:',
+    lines.join('\n'),
+  ].join('\n');
+
+  if (providerForSummary === 'groq') {
+    return await summarizeGroq(systemPrompt, userPrompt);
+  }
+  return await summarizeOpenAI(systemPrompt, userPrompt);
+}
+
+async function summarizeOpenAI(systemPrompt, userPrompt) {
+  const client = getOpenAI();
+  const model = process.env.OPENAI_SUMMARY_MODEL || 'gpt-4o-mini';
+  const result = await client.chat.completions.create({
+    model,
+    temperature: 0.2,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+  });
+
+  const text = result.choices?.[0]?.message?.content?.trim();
+  if (!text) throw new Error('Model nie zwrocil tresci podsumowania.');
+  return text;
+}
+
+async function summarizeGroq(systemPrompt, userPrompt) {
+  const model = process.env.GROQ_SUMMARY_MODEL || 'llama-3.3-70b-versatile';
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error('Brak GROQ_API_KEY w .env');
+
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.2,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Groq API ${res.status}: ${errText}`);
+  }
+  const data = await res.json();
+  const text = data.choices?.[0]?.message?.content?.trim();
+  if (!text) throw new Error('Model nie zwrocil tresci podsumowania.');
+  return text;
 }
 
 async function transcribeOpenAI(file, language) {

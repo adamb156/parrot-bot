@@ -13,6 +13,13 @@ Discord bot, który robi transkrypcję wiadomości głosowych (voice messages) w
 - **Whitelista roli** – kto może klikać przycisk / context menu
 - **Język** transkrypcji (auto albo wymuszony, np. `pl`)
 - **Odpowiedź prywatna lub publiczna**
+- **Podsumowania czatu**:
+   - `/short okres:<2h|30m|...>` - podsumowanie najwazniejszych tematow z okresu (max 10h)
+   - dostep domyslnie tylko dla moderatora/admina (Manage Messages / Manage Server)
+   - cooldown na kanal, aby ograniczyc naduzycia
+- **Auto-podsumowania** (domyslnie wylaczone):
+   - konfigurowane przez `/config short-auto ...`
+   - interwal 1-10h, minimalna liczba wiadomosci i kanal publikacji
 
 ## Stack
 
@@ -52,6 +59,10 @@ Discord bot, który robi transkrypcję wiadomości głosowych (voice messages) w
 - `/config language code:<pl|en|...>` – pomiń argument, by ustawić auto-wykrywanie
 - `/config role role:<@rola>` – pomiń, by zezwolić wszystkim
 - `/config reply ephemeral:<true|false>`
+- `/config short-auto enabled:<true|false> interval-hours:<1-10> min-messages:<10-2000> channel:<#kanal>`
+- `/config short-auto-show`
 - `/ping`
+- `/short okres:<2h|5min|30m>`
 
 Komendy `/config` wymagają uprawnienia **Manage Server**.
+Komenda `/short` wymaga uprawnienia **Manage Messages** (lub **Manage Server**).

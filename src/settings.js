@@ -10,6 +10,11 @@ const DEFAULTS = {
   language: 'pl',          // null = auto-wykrywanie, np. 'pl' = polski
   allowed_role_id: null,   // null = wszyscy
   reply_ephemeral: 0,      // 0 publicznie, 1 prywatnie
+  short_auto_enabled: 0,   // 0 = off (domyslnie), 1 = on
+  short_auto_interval_hours: 4,
+  short_auto_channel_id: null,
+  short_auto_min_messages: 30,
+  short_auto_last_run_at: 0,
 };
 
 function load() {
