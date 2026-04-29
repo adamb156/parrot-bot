@@ -53,7 +53,7 @@ export async function summarizeChatMessages(messages, periodHours) {
   const MAX_CHARS = 45000;
 
   for (const msg of messages) {
-    const line = `${msg.author}: ${msg.content}`.trim();
+    const line = `${msg.content}`.trim();
     if (!line) continue;
     if (currentSize + line.length + 1 > MAX_CHARS) break;
     lines.push(line);
@@ -66,17 +66,20 @@ export async function summarizeChatMessages(messages, periodHours) {
 
   const systemPrompt =
     'Jestes analitykiem rozmow Discord. Tworzysz tylko najwazniejsze tematy rozmowy, bez drobnych ciekawostek. '
-    + 'Kazdy temat opisujesz JEDNYM zdaniem. Ignoruj pojedyncze, malo istotne wpisy.';
+    + 'Kazdy temat opisujesz JEDNYM zdaniem i nigdy nie piszesz kto cos napisal.';
 
-  const targetSentences = Math.max(3, Math.min(12, Math.round(periodHours * 1.2)));
+  const targetSentences = Math.max(2, Math.min(10, Math.round(periodHours)));
   const userPrompt = [
     `Okres rozmowy: ostatnie ${periodHours}h.`,
     `Masz zwrocic ${targetSentences} najwazniejszych tematow w punktach.`,
     'Wymagania:',
     '- Jedno zdanie = jeden temat.',
+    '- Uwzgledniaj tylko tematy, w ktorych pojawilo sie minimum 7 wiadomosci.',
     '- Wybieraj tematy, ktore mialy wyraznie wiecej wiadomosci.',
     '- Pomijaj malo istotne detale i pojedyncze wzmianki.',
+    '- Nie podawaj autorow, nickow ani informacji kto cos napisal.',
     '- Odpowiedz po polsku.',
+    '- Jesli zaden temat nie spelnia progu 7 wiadomosci, odpowiedz dokladnie: "Brak tematow spelniajacych prog 7 wiadomosci."',
     '',
     'Wiadomosci:',
     lines.join('\n'),
