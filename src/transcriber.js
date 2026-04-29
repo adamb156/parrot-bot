@@ -49,48 +49,52 @@ export async function summarizeChatMessages(messages, periodHours, topicMinMessa
   }
 
   const providerForSummary = getSummaryProvider();
-  const lines = [];
+  const indexedLines = [];
   let currentSize = 0;
   const MAX_CHARS = 45000;
+  let currentIndex = 1;
 
   for (const msg of messages) {
     const line = `${msg.content}`.trim();
     if (!line) continue;
-    if (currentSize + line.length + 1 > MAX_CHARS) break;
-    lines.push(line);
-    currentSize += line.length + 1;
+    const indexed = `[${currentIndex}] ${line}`;
+    if (currentSize + indexed.length + 1 > MAX_CHARS) break;
+    indexedLines.push(indexed);
+    currentSize += indexed.length + 1;
+    currentIndex += 1;
   }
 
-  if (!lines.length) {
+  if (!indexedLines.length) {
     return 'Brak tresci tekstowej do podsumowania.';
   }
 
-  const systemPrompt =
-    'Jestes analitykiem rozmow Discord. Tworzysz tylko najwazniejsze tematy rozmowy, bez drobnych ciekawostek. '
-    + 'Kazdy temat opisujesz JEDNYM zdaniem i nigdy nie piszesz kto cos napisal.';
-
-  const targetSentences = Math.max(2, Math.min(10, Math.round(periodHours)));
   const minTopicMessages = Math.max(2, Math.min(30, Math.floor(topicMinMessages || 7)));
-  const userPrompt = [
-    `Okres rozmowy: ostatnie ${periodHours}h.`,
-    `Masz zwrocic ${targetSentences} najwazniejszych tematow w punktach.`,
-    'Wymagania:',
-    '- Jedno zdanie = jeden temat.',
-    `- Uwzgledniaj tylko tematy, w ktorych pojawilo sie minimum ${minTopicMessages} wiadomosci.`,
-    '- Wybieraj tematy, ktore mialy wyraznie wiecej wiadomosci.',
-    '- Pomijaj malo istotne detale i pojedyncze wzmianki.',
-    '- Nie podawaj autorow, nickow ani informacji kto cos napisal.',
-    '- Odpowiedz po polsku.',
-    `- Jesli zaden temat nie spelnia progu ${minTopicMessages} wiadomosci, odpowiedz dokladnie: "Brak tematow spelniajacych prog ${minTopicMessages} wiadomosci."`,
-    '',
-    'Wiadomosci:',
-    lines.join('\n'),
-  ].join('\n');
+  const targetSentences = Math.max(2, Math.min(10, Math.round(periodHours)));
 
-  if (providerForSummary === 'groq') {
-    return await summarizeGroq(systemPrompt, userPrompt);
+  const clusters = providerForSummary === 'groq'
+    ? await clusterTopicsGroq(indexedLines)
+    : await clusterTopicsOpenAI(indexedLines);
+
+  const filtered = (clusters.topics || [])
+    .map((t) => {
+      const uniqueIndexes = [...new Set((t.messageIndexes || []).filter((n) => Number.isInteger(n) && n > 0))];
+      return {
+        name: (t.name || '').trim(),
+        summary: (t.summary || '').trim(),
+        messageIndexes: uniqueIndexes,
+        count: uniqueIndexes.length,
+      };
+    })
+    .filter((t) => t.count >= minTopicMessages && t.summary)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, targetSentences);
+
+  if (!filtered.length) {
+    return `Brak tematow spelniajacych prog ${minTopicMessages} wiadomosci.`;
   }
-  return await summarizeOpenAI(systemPrompt, userPrompt);
+
+  const lines = filtered.map((t) => `- ${enforceSingleSentence(t.summary)} (${t.count} wiadomosci)`);
+  return lines.join('\n');
 }
 
 async function transcribeOpenAI(file, language) {
@@ -183,4 +187,106 @@ async function summarizeGroq(systemPrompt, userPrompt) {
   const text = data.choices?.[0]?.message?.content?.trim();
   if (!text) throw new Error('Model nie zwrocil tresci podsumowania.');
   return text;
+}
+
+function topicClusteringPrompts(indexedLines) {
+  const systemPrompt = [
+    'Jestes analitykiem rozmow grupowych.',
+    'Zadanie: przypisz kazda wiadomosc do tematu, nawet gdy watki sa przeplatane czasowo.',
+    'Nie podawaj autorow ani nickow.',
+    'Zwroc TYLKO poprawny JSON bez markdown.',
+  ].join(' ');
+
+  const userPrompt = [
+    'Wejscie to lista wiadomosci z indeksami.',
+    'Wymagania klasyfikacji:',
+    '- Grupuj wiadomosci semantycznie (ten sam temat), nawet jesli sa porozrzucane.',
+    '- Jedna wiadomosc moze nalezec maksymalnie do jednego glownego tematu.',
+    '- Pomijaj smieci i pojedyncze offtopy.',
+    '- Dla kazdego tematu daj jedno zdanie podsumowania po polsku.',
+    '- Nie uzywaj informacji kto co napisal.',
+    '',
+    'Format JSON:',
+    '{"topics":[{"name":"...","summary":"...","messageIndexes":[1,4,10]}]}',
+    '',
+    'Wiadomosci:',
+    indexedLines.join('\n'),
+  ].join('\n');
+
+  return { systemPrompt, userPrompt };
+}
+
+async function clusterTopicsOpenAI(indexedLines) {
+  const client = getOpenAI();
+  const model = process.env.OPENAI_SUMMARY_MODEL || 'gpt-4o-mini';
+  const prompts = topicClusteringPrompts(indexedLines);
+  const result = await client.chat.completions.create({
+    model,
+    temperature: 0.1,
+    messages: [
+      { role: 'system', content: prompts.systemPrompt },
+      { role: 'user', content: prompts.userPrompt },
+    ],
+  });
+  const text = result.choices?.[0]?.message?.content?.trim();
+  if (!text) throw new Error('Model nie zwrocil danych klasyfikacji tematow.');
+  return parseTopicJson(text);
+}
+
+async function clusterTopicsGroq(indexedLines) {
+  const model = process.env.GROQ_SUMMARY_MODEL || 'llama-3.3-70b-versatile';
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error('Brak GROQ_API_KEY w .env');
+
+  const prompts = topicClusteringPrompts(indexedLines);
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.1,
+      messages: [
+        { role: 'system', content: prompts.systemPrompt },
+        { role: 'user', content: prompts.userPrompt },
+      ],
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Groq API ${res.status}: ${errText}`);
+  }
+
+  const data = await res.json();
+  const text = data.choices?.[0]?.message?.content?.trim();
+  if (!text) throw new Error('Model nie zwrocil danych klasyfikacji tematow.');
+  return parseTopicJson(text);
+}
+
+function parseTopicJson(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && Array.isArray(parsed.topics)) return parsed;
+  } catch {}
+
+  const jsonStart = raw.indexOf('{');
+  const jsonEnd = raw.lastIndexOf('}');
+  if (jsonStart >= 0 && jsonEnd > jsonStart) {
+    const fragment = raw.slice(jsonStart, jsonEnd + 1);
+    const parsed = JSON.parse(fragment);
+    if (parsed && Array.isArray(parsed.topics)) return parsed;
+  }
+
+  throw new Error('Nie udalo sie sparsowac klasyfikacji tematow (JSON).');
+}
+
+function enforceSingleSentence(text) {
+  const cleaned = (text || '').replace(/\s+/g, ' ').trim();
+  if (!cleaned) return '';
+  const parts = cleaned.split(/[.!?]+/).map((p) => p.trim()).filter(Boolean);
+  if (!parts.length) return cleaned;
+  return `${parts[0]}.`;
 }
