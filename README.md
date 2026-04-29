@@ -61,6 +61,7 @@ Discord bot, który robi transkrypcję wiadomości głosowych (voice messages) w
 - `/config role role:<@rola>` – pomiń, by zezwolić wszystkim
 - `/config reply ephemeral:<true|false>`
 - `/config short-auto enabled:<true|false> interval-hours:<1-10> min-messages:<10-2000> channel:<#kanal>`
+- `/config short-topic-threshold messages:<2-30>`
 - `/config short-auto-show`
 - `/ping`
 - `/short okres:<2h|5min|30m>`

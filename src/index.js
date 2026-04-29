@@ -349,7 +349,8 @@ async function handleShort(interaction, testOnly) {
       return await interaction.editReply('ℹ️ Za mało wiadomości w tym okresie, żeby zrobić sensowne podsumowanie.');
     }
 
-    const summary = await summarizeChatMessages(items, parsed.hours);
+    const settings = getSettings(interaction.guildId);
+    const summary = await summarizeChatMessages(items, parsed.hours, settings.short_topic_min_messages);
     shortCooldownByChannel.set(channel.id, Date.now() + SHORT_COOLDOWN_SEC * 1000);
 
     const titlePrefix = testOnly ? '🧪 Podsumowanie testowe' : '🧠 Podsumowanie kanału';
@@ -397,7 +398,11 @@ function startAutoSummaryScheduler(discordClient) {
           continue;
         }
 
-        const summary = await summarizeChatMessages(items, settings.short_auto_interval_hours);
+        const summary = await summarizeChatMessages(
+          items,
+          settings.short_auto_interval_hours,
+          settings.short_topic_min_messages,
+        );
         const embed = new EmbedBuilder()
           .setColor(0x3498db)
           .setTitle(`🧠 Auto-podsumowanie (${settings.short_auto_interval_hours}h)`)
@@ -431,6 +436,7 @@ async function handleConfig(interaction) {
         { name: 'Wymagana rola', value: s.allowed_role_id ? `<@&${s.allowed_role_id}>` : 'wszyscy', inline: true },
         { name: 'Odpowiedź prywatna', value: s.reply_ephemeral ? 'tak' : 'nie', inline: true },
         { name: 'Auto-podsumowania', value: s.short_auto_enabled ? 'włączone' : 'wyłączone', inline: true },
+        { name: 'Próg tematu', value: `${s.short_topic_min_messages} wiadomości`, inline: true },
       );
     return await interaction.reply({ embeds: [embed], ephemeral: true });
   }
@@ -445,6 +451,7 @@ async function handleConfig(interaction) {
         { name: 'Status', value: s.short_auto_enabled ? 'włączone' : 'wyłączone', inline: true },
         { name: 'Interwał', value: `${s.short_auto_interval_hours}h`, inline: true },
         { name: 'Min wiadomości', value: `${s.short_auto_min_messages}`, inline: true },
+        { name: 'Próg tematu', value: `${s.short_topic_min_messages} wiadomości`, inline: true },
         { name: 'Kanał', value: channelText, inline: true },
       );
     return await interaction.reply({ embeds: [embed], ephemeral: true });
@@ -517,6 +524,15 @@ async function handleConfig(interaction) {
         + `Kanał: <#${next.short_auto_channel_id}>\n`
         + `Interwał: ${next.short_auto_interval_hours}h\n`
         + `Min wiadomości: ${next.short_auto_min_messages}`,
+      ephemeral: true,
+    });
+  }
+
+  if (sub === 'short-topic-threshold') {
+    const messages = interaction.options.getInteger('messages', true);
+    updateSettings(guildId, { short_topic_min_messages: messages });
+    return await interaction.reply({
+      content: `✅ Próg tematu ustawiony na ${messages} wiadomości.`,
       ephemeral: true,
     });
   }

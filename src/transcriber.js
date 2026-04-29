@@ -40,9 +40,10 @@ export async function transcribeFromUrl(url, filename, language = null) {
 /**
  * @param {Array<{author: string, content: string}>} messages
  * @param {number} periodHours
+ * @param {number} topicMinMessages
  * @returns {Promise<string>}
  */
-export async function summarizeChatMessages(messages, periodHours) {
+export async function summarizeChatMessages(messages, periodHours, topicMinMessages = 7) {
   if (!Array.isArray(messages) || messages.length === 0) {
     return 'Brak wiadomosci do podsumowania.';
   }
@@ -69,17 +70,18 @@ export async function summarizeChatMessages(messages, periodHours) {
     + 'Kazdy temat opisujesz JEDNYM zdaniem i nigdy nie piszesz kto cos napisal.';
 
   const targetSentences = Math.max(2, Math.min(10, Math.round(periodHours)));
+  const minTopicMessages = Math.max(2, Math.min(30, Math.floor(topicMinMessages || 7)));
   const userPrompt = [
     `Okres rozmowy: ostatnie ${periodHours}h.`,
     `Masz zwrocic ${targetSentences} najwazniejszych tematow w punktach.`,
     'Wymagania:',
     '- Jedno zdanie = jeden temat.',
-    '- Uwzgledniaj tylko tematy, w ktorych pojawilo sie minimum 7 wiadomosci.',
+    `- Uwzgledniaj tylko tematy, w ktorych pojawilo sie minimum ${minTopicMessages} wiadomosci.`,
     '- Wybieraj tematy, ktore mialy wyraznie wiecej wiadomosci.',
     '- Pomijaj malo istotne detale i pojedyncze wzmianki.',
     '- Nie podawaj autorow, nickow ani informacji kto cos napisal.',
     '- Odpowiedz po polsku.',
-    '- Jesli zaden temat nie spelnia progu 7 wiadomosci, odpowiedz dokladnie: "Brak tematow spelniajacych prog 7 wiadomosci."',
+    `- Jesli zaden temat nie spelnia progu ${minTopicMessages} wiadomosci, odpowiedz dokladnie: "Brak tematow spelniajacych prog ${minTopicMessages} wiadomosci."`,
     '',
     'Wiadomosci:',
     lines.join('\n'),

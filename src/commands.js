@@ -75,6 +75,19 @@ export const slashCommands = [
           o.setName('channel').setDescription('Kanał podsumowań (domyślnie bieżący)').setRequired(false),
         ),
     )
+    .addSubcommand((sc) =>
+      sc
+        .setName('short-topic-threshold')
+        .setDescription('Minimalna liczba wiadomości, aby temat trafił do podsumowania')
+        .addIntegerOption((o) =>
+          o
+            .setName('messages')
+            .setDescription('Próg wiadomości na temat (2-30)')
+            .setMinValue(2)
+            .setMaxValue(30)
+            .setRequired(true),
+        ),
+    )
     .addSubcommand((sc) => sc.setName('short-auto-show').setDescription('Pokaż ustawienia auto-podsumowań'))
     .addSubcommand((sc) => sc.setName('show').setDescription('Pokaż aktualne ustawienia')),
   new SlashCommandBuilder()
