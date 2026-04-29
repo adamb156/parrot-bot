@@ -19,18 +19,15 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent, // potrzebne, by widzieć załączniki w wiadomościach
+    GatewayIntentBits.MessageContent,
   ],
   partials: [Partials.Message, Partials.Channel],
 });
 
+const VOICE_FLAG = 1 << 13;
 const SHORT_MAX_HOURS = 10;
 const SHORT_COOLDOWN_SEC = 10 * 60;
 const shortCooldownByChannel = new Map();
-
-// ---------- helpers ----------
-
-const VOICE_FLAG = 1 << 13; // MessageFlags.IsVoiceMessage
 
 function isVoiceMessage(message) {
   if (typeof message.flags?.has === 'function' && MessageFlags?.IsVoiceMessage !== undefined) {
@@ -39,7 +36,6 @@ function isVoiceMessage(message) {
   if (typeof message.flags?.bitfield === 'number' && (message.flags.bitfield & VOICE_FLAG) !== 0) {
     return true;
   }
-  // fallback: pojedynczy załącznik audio z polem duration
   const att = message.attachments?.first?.();
   if (att && typeof att.duration === 'number') return true;
   return false;
@@ -169,8 +165,6 @@ function canUseShort(interaction) {
     || interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild);
 }
 
-// ---------- events ----------
-
 client.once(Events.ClientReady, (c) => {
   console.log(`✅ Zalogowano jako ${c.user.tag}`);
   startAutoSummaryScheduler(c);
@@ -193,7 +187,6 @@ client.on(Events.MessageCreate, async (message) => {
       return;
     }
 
-    // mode === 'auto'
     const att = getVoiceAttachment(message);
     if (att && att.duration && att.duration > settings.max_seconds) {
       await message.reply({
@@ -228,7 +221,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return await handleConfig(interaction);
     }
     if (interaction.isChatInputCommand() && interaction.commandName === 'short') {
-      return await handleShort(interaction);
+      return await handleShort(interaction, false);
+    }
+    if (interaction.isChatInputCommand() && interaction.commandName === 'short-test') {
+      return await handleShort(interaction, true);
     }
     if (interaction.isChatInputCommand() && interaction.commandName === 'ping') {
       return await interaction.reply({ content: '🏓 Pong!', ephemeral: true });
@@ -266,7 +262,7 @@ async function handleTranscribeInteraction(interaction, message) {
   }
 
   const ephemeral = settings.reply_ephemeral === 1;
-  await interaction.deferReply({ ephemeral });
+  await interaction.deferReply({ ephemeral: ephemeral ? true : undefined });
 
   try {
     const result = await performTranscription(message, settings);
@@ -279,9 +275,6 @@ async function handleTranscribeInteraction(interaction, message) {
   }
 }
 
-// Wariant dla przycisku: edytuje TĘ SAMĄ wiadomość bota (z przyciskiem),
-// dezaktywując przycisk natychmiast — niemożliwe podwójne kliknięcie,
-// a wynik pojawia się dokładnie w miejscu przycisku (bez nowych wiadomości).
 async function handleTranscribeButton(interaction, message, originalMessageId) {
   const settings = getSettings(interaction.guildId);
 
@@ -295,8 +288,6 @@ async function handleTranscribeButton(interaction, message, originalMessageId) {
     return await interaction.reply({ content: '❌ Ta wiadomość nie jest nagraniem głosowym.', ephemeral: true });
   }
 
-  // Krok 1: natychmiastowa podmiana wiadomości — przycisk się dezaktywuje,
-  // więc kolejne kliknięcia są niemożliwe (Discord odrzuci je jako "already acknowledged").
   await interaction.update({
     content: '⏳ Transkrybuję...',
     components: [buildTranscribeButton(originalMessageId, { disabled: true, label: 'Transkrybuję...' })],
@@ -319,7 +310,7 @@ async function handleTranscribeButton(interaction, message, originalMessageId) {
   }
 }
 
-async function handleShort(interaction) {
+async function handleShort(interaction, testOnly) {
   if (!canUseShort(interaction)) {
     return await interaction.reply({
       content: '⛔ Ta komenda jest dostępna tylko dla moderatora/admina.',
@@ -350,7 +341,7 @@ async function handleShort(interaction) {
     return await interaction.reply({ content: `❌ ${err.message}`, ephemeral: true });
   }
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ ephemeral: testOnly ? true : undefined });
 
   try {
     const items = await collectMessagesFromPeriod(channel, parsed.ms);
@@ -361,9 +352,10 @@ async function handleShort(interaction) {
     const summary = await summarizeChatMessages(items, parsed.hours);
     shortCooldownByChannel.set(channel.id, Date.now() + SHORT_COOLDOWN_SEC * 1000);
 
+    const titlePrefix = testOnly ? '🧪 Podsumowanie testowe' : '🧠 Podsumowanie kanału';
     const embed = new EmbedBuilder()
-      .setColor(0x1f8b4c)
-      .setTitle(`🧠 Podsumowanie kanału (${parsed.hours}h)`)
+      .setColor(testOnly ? 0xf1c40f : 0x1f8b4c)
+      .setTitle(`${titlePrefix} (${parsed.hours}h)`)
       .setDescription(summary.length > 4000 ? summary.slice(0, 3997) + '...' : summary)
       .setFooter({ text: `Wiadomości: ${items.length}` });
 
@@ -502,6 +494,7 @@ async function handleConfig(interaction) {
     const intervalHours = interaction.options.getInteger('interval-hours');
     const minMessages = interaction.options.getInteger('min-messages');
     const channel = interaction.options.getChannel('channel');
+
     if (channel && !channel.isTextBased()) {
       return await interaction.reply({
         content: '❌ Kanał auto-podsumowań musi być kanałem tekstowym.',
@@ -528,8 +521,6 @@ async function handleConfig(interaction) {
     });
   }
 }
-
-// ---------- start ----------
 
 if (!process.env.DISCORD_TOKEN) {
   console.error('Brak DISCORD_TOKEN w .env');

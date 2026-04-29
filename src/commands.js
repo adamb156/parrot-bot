@@ -3,7 +3,7 @@ import { SlashCommandBuilder, ContextMenuCommandBuilder, ApplicationCommandType,
 export const slashCommands = [
   new SlashCommandBuilder()
     .setName('config')
-    .setDescription('Konfiguracja transkrypcji wiadomości głosowych')
+    .setDescription('Konfiguracja transkrypcji i podsumowań')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
     .addSubcommand((sc) =>
@@ -83,6 +83,17 @@ export const slashCommands = [
   new SlashCommandBuilder()
     .setName('short')
     .setDescription('Streść najważniejsze tematy rozmowy z wybranego okresu (max 10h)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages | PermissionFlagsBits.ManageGuild)
+    .setDMPermission(false)
+    .addStringOption((o) =>
+      o
+        .setName('okres')
+        .setDescription('Np. 2h, 5min, 30m')
+        .setRequired(true),
+    ),
+  new SlashCommandBuilder()
+    .setName('short-test')
+    .setDescription('Wersja testowa podsumowania widoczna tylko dla Ciebie (max 10h)')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages | PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
     .addStringOption((o) =>

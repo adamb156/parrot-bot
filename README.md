@@ -15,7 +15,8 @@ Discord bot, który robi transkrypcję wiadomości głosowych (voice messages) w
 - **Odpowiedź prywatna lub publiczna**
 - **Podsumowania czatu**:
    - `/short okres:<2h|30m|...>` - podsumowanie najwazniejszych tematow z okresu (max 10h)
-   - dostep domyslnie tylko dla moderatora/admina (Manage Messages / Manage Server)
+   - `/short-test okres:<...>` - wersja testowa widoczna tylko dla wywolujacego
+   - dostep tylko dla moderatora/admina (Manage Messages / Manage Server)
    - cooldown na kanal, aby ograniczyc naduzycia
 - **Auto-podsumowania** (domyslnie wylaczone):
    - konfigurowane przez `/config short-auto ...`
@@ -63,6 +64,7 @@ Discord bot, który robi transkrypcję wiadomości głosowych (voice messages) w
 - `/config short-auto-show`
 - `/ping`
 - `/short okres:<2h|5min|30m>`
+- `/short-test okres:<2h|5min|30m>`
 
 Komendy `/config` wymagają uprawnienia **Manage Server**.
-Komenda `/short` wymaga uprawnienia **Manage Messages** (lub **Manage Server**).
+Komendy `/short` i `/short-test` wymagają uprawnienia **Manage Messages** (lub **Manage Server**).
