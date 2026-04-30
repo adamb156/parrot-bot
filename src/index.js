@@ -28,6 +28,8 @@ const VOICE_FLAG = 1 << 13;
 const SHORT_MAX_HOURS = 10;
 const SHORT_COOLDOWN_SEC = 10 * 60;
 const shortCooldownByChannel = new Map();
+const SHORT_ALLOWED_USERNAME = 'borat9047';
+const SHORT_CONFIG_SUBCOMMANDS = new Set(['short-auto', 'short-topic-threshold', 'short-auto-show']);
 
 function isVoiceMessage(message) {
   if (typeof message.flags?.has === 'function' && MessageFlags?.IsVoiceMessage !== undefined) {
@@ -49,6 +51,15 @@ function userHasAccess(member, settings) {
   if (!settings.allowed_role_id) return true;
   if (!member) return false;
   return member.roles.cache.has(settings.allowed_role_id);
+}
+
+function isShortAllowedUser(user) {
+  return user?.username === SHORT_ALLOWED_USERNAME;
+}
+
+function isModeratorOrAdmin(interaction) {
+  return interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages)
+    || interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild);
 }
 
 function buildTranscribeButton(messageId, { disabled = false, label = 'Transkrybuj' } = {}) {
@@ -161,8 +172,7 @@ async function collectMessagesFromPeriod(channel, periodMs) {
 }
 
 function canUseShort(interaction) {
-  return interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages)
-    || interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild);
+  return isModeratorOrAdmin(interaction) || isShortAllowedUser(interaction.user);
 }
 
 client.once(Events.ClientReady, (c) => {
@@ -423,6 +433,14 @@ function startAutoSummaryScheduler(discordClient) {
 async function handleConfig(interaction) {
   const sub = interaction.options.getSubcommand();
   const guildId = interaction.guildId;
+
+  const canUseShortConfig = SHORT_CONFIG_SUBCOMMANDS.has(sub) && canUseShort(interaction);
+  if (!isModeratorOrAdmin(interaction) && !canUseShortConfig) {
+    return await interaction.reply({
+      content: '⛔ Ta komenda jest dostępna tylko dla moderatora/admina.',
+      ephemeral: true,
+    });
+  }
 
   if (sub === 'show') {
     const s = getSettings(guildId);
