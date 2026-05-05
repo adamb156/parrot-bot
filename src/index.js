@@ -157,9 +157,11 @@ async function collectMessagesFromPeriod(channel, periodMs) {
       const content = normalizeMessageContent(msg);
       if (!content) continue;
       collected.push({
+        id: msg.id,
         author: msg.member?.displayName || msg.author.username,
         content,
         createdTimestamp: msg.createdTimestamp,
+        replyToId: msg.reference?.messageId || null,
       });
     }
 

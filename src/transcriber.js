@@ -50,6 +50,7 @@ export async function summarizeChatMessages(messages, periodHours, topicMinMessa
 
   const providerForSummary = getSummaryProvider();
   const indexedLines = [];
+  const idToIndex = new Map();
   let currentSize = 0;
   const MAX_CHARS = 45000;
   let currentIndex = 1;
@@ -57,9 +58,12 @@ export async function summarizeChatMessages(messages, periodHours, topicMinMessa
   for (const msg of messages) {
     const line = `${msg.content}`.trim();
     if (!line) continue;
-    const indexed = `[${currentIndex}] ${line}`;
+    const replyIdx = msg.replyToId ? idToIndex.get(msg.replyToId) : null;
+    const prefix = replyIdx ? `[${currentIndex}->${replyIdx}]` : `[${currentIndex}]`;
+    const indexed = `${prefix} ${line}`;
     if (currentSize + indexed.length + 1 > MAX_CHARS) break;
     indexedLines.push(indexed);
+    if (msg.id) idToIndex.set(msg.id, currentIndex);
     currentSize += indexed.length + 1;
     currentIndex += 1;
   }
@@ -210,21 +214,28 @@ function topicClusteringPrompts(indexedLines) {
   ].join(' ');
 
   const userPrompt = [
-    'Wejscie to lista wiadomosci z indeksami w formacie [N] tresc.',
+    'Wejscie to chronologiczna lista wiadomosci z Discorda w formacie [N] tresc lub [N->M] tresc.',
+    'Notacja [N->M] oznacza, ze wiadomosc N jest jawna odpowiedzia na wiadomosc M (uzytkownik kliknal Reply).',
+    '',
     'Twoje zadanie: znalezc WSZYSTKIE odrebne tematy rozmowy w calym oknie i przypisac do nich indeksy wiadomosci.',
     '',
-    'Zasady klasyfikacji:',
+    'Najwazniejsza zasada - rozumienie kontekstu:',
+    '- Czytaj rozmowe jak czlowiek - krotka wiadomosc czesto nie ma sensu sama w sobie i bierze znaczenie z poprzedzajacych ja wiadomosci.',
+    '- Krotkie odpowiedzi typu "tak", "nie", "jasne", "raczej nie", "a Ty?", "hahah", "+1", "no wlasnie", emotki to sa REPLIKI w trwajacym watku - ZAWSZE przypisuj je do tematu, do ktorego sie odnosza, a nie traktuj jako oddzielny offtop.',
+    '- Jesli wiadomosc ma znacznik [N->M], to wiadomosc N kontynuuje DOKLADNIE ten sam watek co wiadomosc M, niezalezne od tresci.',
+    '- Jesli wiadomosc nie ma jawnego ->M, sprawdz najblizsze poprzednie pytanie/temat (zazwyczaj w obrebie 1-15 wiadomosci wstecz) i przypisz ja tam, jesli pasuje semantycznie.',
+    '- Pytania zadane bez kontekstu czesto zaczynaja nowy temat - sledz, czy ktos na nie odpowiedzial pozniej (nawet po kilkudziesieciu wiadomosciach).',
+    '',
+    'Pozostale zasady:',
     '- Grupuj po znaczeniu, nie po kolejnosci. Wiadomosci [3], [17] i [42] moga nalezec do jednego tematu, jesli dotycza tej samej rzeczy.',
-    '- Krotkie reakcje, pytania doprecyzowujace, potwierdzenia ("tak", "jasne", "hahah", "a Ty?") naleza do tematu, do ktorego sie odnosza - dolacz je do najblizszego semantycznie watku.',
-    '- NIE rozbijaj tego samego tematu na kilka odrebnych pozycji. Jesli kilka twoich propozycji opisuje to samo (np. "AI w programowaniu" i "modele LLM do kodu"), polacz je w jeden temat.',
-    '- Nie pomijaj watkow tylko dlatego, ze sa krotsze - kazdy spojny temat z >= 3 wiadomosciami ma byc w wyniku.',
-    '- Pomijaj jedynie wiadomosci kompletnie offtopowe, ktore nie laczą sie z zadnym watkiem.',
+    '- NIE rozbijaj tego samego tematu na kilka pozycji. Jesli kilka twoich propozycji opisuje to samo (np. "AI w programowaniu" i "modele LLM do kodu"), polacz je w jeden temat.',
+    '- Nie pomijaj watkow tylko dlatego, ze sa krotsze - kazdy spojny watek z >= 3 wiadomosciami ma byc w wyniku.',
     '- Jedna wiadomosc moze nalezec maksymalnie do jednego glownego tematu.',
-    '- Dla kazdego tematu daj jedno konkretne zdanie podsumowania po polsku (co konkretnie ustalono / o czym byla mowa, nie ogolniki).',
-    '- Nie uzywaj informacji kto co napisal.',
+    '- Dla kazdego tematu daj jedno konkretne zdanie po polsku (co konkretnie ustalono / o czym byla mowa, nie ogolniki).',
+    '- Nie uzywaj informacji kto co napisal, nie wymieniaj nickow.',
     '- Postaraj sie zwrocic 4-12 tematow, jesli rozmowa byla rzeczywiscie urozmaicona.',
     '',
-    'Format JSON (bez zadnego dodatkowego tekstu):',
+    'Format odpowiedzi (TYLKO JSON, bez markdown, bez komentarzy):',
     '{"topics":[{"name":"krotki tytul","summary":"jedno zdanie po polsku","messageIndexes":[1,4,10]}]}',
     '',
     'Wiadomosci:',
