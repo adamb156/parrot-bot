@@ -69,7 +69,7 @@ export async function summarizeChatMessages(messages, periodHours, topicMinMessa
   }
 
   const minTopicMessages = Math.max(2, Math.min(30, Math.floor(topicMinMessages || 4)));
-  const targetSentences = Math.max(2, Math.min(10, Math.round(periodHours)));
+  const maxTopics = Math.max(5, Math.min(15, Math.ceil(indexedLines.length / 8)));
 
   const clusters = providerForSummary === 'groq'
     ? await clusterTopicsGroq(indexedLines)
@@ -89,11 +89,11 @@ export async function summarizeChatMessages(messages, periodHours, topicMinMessa
     .sort((a, b) => b.count - a.count);
 
   const meetingThreshold = normalized.filter((t) => t.count >= minTopicMessages);
-  let chosen = meetingThreshold.slice(0, targetSentences);
+  let chosen = meetingThreshold.slice(0, maxTopics);
   let belowThreshold = false;
 
   if (!chosen.length) {
-    chosen = normalized.slice(0, targetSentences);
+    chosen = normalized.slice(0, maxTopics);
     belowThreshold = chosen.length > 0;
   }
 
@@ -202,24 +202,30 @@ async function summarizeGroq(systemPrompt, userPrompt) {
 
 function topicClusteringPrompts(indexedLines) {
   const systemPrompt = [
-    'Jestes analitykiem rozmow grupowych.',
-    'Zadanie: przypisz kazda wiadomosc do tematu, nawet gdy watki sa przeplatane czasowo.',
+    'Jestes analitykiem rozmow grupowych na Discordzie.',
+    'Specjalizujesz sie w odtwarzaniu watkow tematycznych, ktore sa MOCNO PRZEPLATANE czasowo.',
+    'Dwie wiadomosci nalezace do tego samego watku moga byc oddalone od siebie o dziesiatki innych wiadomosci.',
     'Nie podawaj autorow ani nickow.',
-    'Zwroc TYLKO poprawny JSON bez markdown.',
+    'Zwroc TYLKO poprawny JSON bez markdown, bez komentarzy.',
   ].join(' ');
 
   const userPrompt = [
-    'Wejscie to lista wiadomosci z indeksami.',
-    'Wymagania klasyfikacji:',
-    '- Grupuj wiadomosci semantycznie (ten sam temat), nawet jesli sa porozrzucane.',
-    '- Krotkie reakcje, pytania doprecyzowujace i potwierdzenia (np. "tak", "jasne", "hahah") tez naleza do tematu, do ktorego sie odnosza - dolacz je do najblizszego watku.',
-    '- Jedna wiadomosc moze nalezec maksymalnie do jednego glownego tematu.',
-    '- Pomijaj jedynie wiadomosci kompletnie niezwiazane z zadnym watkiem (czysty offtop pojedynczy).',
-    '- Dla kazdego tematu daj jedno zdanie podsumowania po polsku.',
-    '- Nie uzywaj informacji kto co napisal.',
+    'Wejscie to lista wiadomosci z indeksami w formacie [N] tresc.',
+    'Twoje zadanie: znalezc WSZYSTKIE odrebne tematy rozmowy w calym oknie i przypisac do nich indeksy wiadomosci.',
     '',
-    'Format JSON:',
-    '{"topics":[{"name":"...","summary":"...","messageIndexes":[1,4,10]}]}',
+    'Zasady klasyfikacji:',
+    '- Grupuj po znaczeniu, nie po kolejnosci. Wiadomosci [3], [17] i [42] moga nalezec do jednego tematu, jesli dotycza tej samej rzeczy.',
+    '- Krotkie reakcje, pytania doprecyzowujace, potwierdzenia ("tak", "jasne", "hahah", "a Ty?") naleza do tematu, do ktorego sie odnosza - dolacz je do najblizszego semantycznie watku.',
+    '- NIE rozbijaj tego samego tematu na kilka odrebnych pozycji. Jesli kilka twoich propozycji opisuje to samo (np. "AI w programowaniu" i "modele LLM do kodu"), polacz je w jeden temat.',
+    '- Nie pomijaj watkow tylko dlatego, ze sa krotsze - kazdy spojny temat z >= 3 wiadomosciami ma byc w wyniku.',
+    '- Pomijaj jedynie wiadomosci kompletnie offtopowe, ktore nie laczą sie z zadnym watkiem.',
+    '- Jedna wiadomosc moze nalezec maksymalnie do jednego glownego tematu.',
+    '- Dla kazdego tematu daj jedno konkretne zdanie podsumowania po polsku (co konkretnie ustalono / o czym byla mowa, nie ogolniki).',
+    '- Nie uzywaj informacji kto co napisal.',
+    '- Postaraj sie zwrocic 4-12 tematow, jesli rozmowa byla rzeczywiscie urozmaicona.',
+    '',
+    'Format JSON (bez zadnego dodatkowego tekstu):',
+    '{"topics":[{"name":"krotki tytul","summary":"jedno zdanie po polsku","messageIndexes":[1,4,10]}]}',
     '',
     'Wiadomosci:',
     indexedLines.join('\n'),
