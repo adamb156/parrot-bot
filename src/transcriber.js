@@ -43,7 +43,7 @@ export async function transcribeFromUrl(url, filename, language = null) {
  * @param {number} topicMinMessages
  * @returns {Promise<string>}
  */
-export async function summarizeChatMessages(messages, periodHours, topicMinMessages = 7) {
+export async function summarizeChatMessages(messages, periodHours, topicMinMessages = 4) {
   if (!Array.isArray(messages) || messages.length === 0) {
     return 'Brak wiadomosci do podsumowania.';
   }
@@ -68,14 +68,14 @@ export async function summarizeChatMessages(messages, periodHours, topicMinMessa
     return 'Brak tresci tekstowej do podsumowania.';
   }
 
-  const minTopicMessages = Math.max(2, Math.min(30, Math.floor(topicMinMessages || 7)));
+  const minTopicMessages = Math.max(2, Math.min(30, Math.floor(topicMinMessages || 4)));
   const targetSentences = Math.max(2, Math.min(10, Math.round(periodHours)));
 
   const clusters = providerForSummary === 'groq'
     ? await clusterTopicsGroq(indexedLines)
     : await clusterTopicsOpenAI(indexedLines);
 
-  const filtered = (clusters.topics || [])
+  const normalized = (clusters.topics || [])
     .map((t) => {
       const uniqueIndexes = [...new Set((t.messageIndexes || []).filter((n) => Number.isInteger(n) && n > 0))];
       return {
@@ -85,16 +85,27 @@ export async function summarizeChatMessages(messages, periodHours, topicMinMessa
         count: uniqueIndexes.length,
       };
     })
-    .filter((t) => t.count >= minTopicMessages && t.summary)
-    .sort((a, b) => b.count - a.count)
-    .slice(0, targetSentences);
+    .filter((t) => t.summary && t.count >= 2)
+    .sort((a, b) => b.count - a.count);
 
-  if (!filtered.length) {
-    return `Brak tematow spelniajacych prog ${minTopicMessages} wiadomosci.`;
+  const meetingThreshold = normalized.filter((t) => t.count >= minTopicMessages);
+  let chosen = meetingThreshold.slice(0, targetSentences);
+  let belowThreshold = false;
+
+  if (!chosen.length) {
+    chosen = normalized.slice(0, targetSentences);
+    belowThreshold = chosen.length > 0;
   }
 
-  const lines = filtered.map((t) => `- ${enforceSingleSentence(t.summary)} (${t.count} wiadomosci)`);
-  return lines.join('\n');
+  if (!chosen.length) {
+    return 'Nie udalo sie wyodrebnic zadnych tematow z tej rozmowy.';
+  }
+
+  const header = belowThreshold
+    ? `(brak tematow z >= ${minTopicMessages} wiadomosci, pokazuje najwieksze)\n`
+    : '';
+  const lines = chosen.map((t) => `- ${enforceSingleSentence(t.summary)} (${t.count} wiadomosci)`);
+  return header + lines.join('\n');
 }
 
 async function transcribeOpenAI(file, language) {
@@ -201,8 +212,9 @@ function topicClusteringPrompts(indexedLines) {
     'Wejscie to lista wiadomosci z indeksami.',
     'Wymagania klasyfikacji:',
     '- Grupuj wiadomosci semantycznie (ten sam temat), nawet jesli sa porozrzucane.',
+    '- Krotkie reakcje, pytania doprecyzowujace i potwierdzenia (np. "tak", "jasne", "hahah") tez naleza do tematu, do ktorego sie odnosza - dolacz je do najblizszego watku.',
     '- Jedna wiadomosc moze nalezec maksymalnie do jednego glownego tematu.',
-    '- Pomijaj smieci i pojedyncze offtopy.',
+    '- Pomijaj jedynie wiadomosci kompletnie niezwiazane z zadnym watkiem (czysty offtop pojedynczy).',
     '- Dla kazdego tematu daj jedno zdanie podsumowania po polsku.',
     '- Nie uzywaj informacji kto co napisal.',
     '',

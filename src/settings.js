@@ -15,7 +15,7 @@ const DEFAULTS = {
   short_auto_channel_id: null,
   short_auto_min_messages: 30,
   short_auto_last_run_at: 0,
-  short_topic_min_messages: 7,
+  short_topic_min_messages: 4,
 };
 
 function load() {
