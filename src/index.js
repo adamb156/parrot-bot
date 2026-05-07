@@ -199,8 +199,8 @@ client.on(Events.PresenceUpdate, async (oldPresence, newPresence) => {
 
     const oldStatus = oldPresence?.status || 'offline';
     const newStatus = newPresence.status || 'offline';
-    if (newStatus !== 'online') return;
     if (oldStatus !== 'offline') return;
+    if (newStatus === 'offline') return;
 
     const now = Date.now();
     if (now - lastPresenceNotifyAt < PRESENCE_NOTIFY.cooldownMs) return;
@@ -208,8 +208,16 @@ client.on(Events.PresenceUpdate, async (oldPresence, newPresence) => {
 
     const owner = await client.users.fetch(PRESENCE_NOTIFY.ownerUserId).catch(() => null);
     if (!owner) return;
-    const targetName = newPresence.user?.globalName || newPresence.user?.username || 'ktoś';
-    await owner.send({ content: `🟢 ${targetName} weszła online` }).catch(() => {});
+    const targetName = newPresence.user?.globalName || newPresence.user?.username || 'kto\u015b';
+    const statusLabel = newStatus === 'online' ? 'online'
+      : newStatus === 'idle' ? 'Zaraz wracam'
+      : newStatus === 'dnd' ? 'Nie przeszkadzac'
+      : newStatus;
+    const emoji = newStatus === 'online' ? '\ud83d\udfe2'
+      : newStatus === 'idle' ? '\ud83c\udf19'
+      : newStatus === 'dnd' ? '\ud83d\udd34'
+      : '\u26aa';
+    await owner.send({ content: `${emoji} ${targetName} pojawi\u0142a si\u0119 (${statusLabel})` }).catch(() => {});
   } catch (err) {
     console.error('PresenceUpdate notify error:', err);
   }
