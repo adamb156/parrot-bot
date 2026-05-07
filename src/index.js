@@ -20,9 +20,18 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildPresences,
   ],
   partials: [Partials.Message, Partials.Channel],
 });
+
+const PRESENCE_NOTIFY = {
+  guildId: '1405978706643652760',
+  targetUserId: '1496065262062141553', // anetka5083
+  ownerUserId: '614510122848485437',   // borat9047
+  cooldownMs: 2 * 60 * 1000,
+};
+let lastPresenceNotifyAt = 0;
 
 const VOICE_FLAG = 1 << 13;
 const SHORT_MAX_HOURS = 10;
@@ -180,6 +189,30 @@ function canUseShort(interaction) {
 client.once(Events.ClientReady, (c) => {
   console.log(`✅ Zalogowano jako ${c.user.tag}`);
   startAutoSummaryScheduler(c);
+});
+
+client.on(Events.PresenceUpdate, async (oldPresence, newPresence) => {
+  try {
+    if (!newPresence) return;
+    if (newPresence.guild?.id !== PRESENCE_NOTIFY.guildId) return;
+    if (newPresence.userId !== PRESENCE_NOTIFY.targetUserId) return;
+
+    const oldStatus = oldPresence?.status || 'offline';
+    const newStatus = newPresence.status || 'offline';
+    if (newStatus !== 'online') return;
+    if (oldStatus !== 'offline') return;
+
+    const now = Date.now();
+    if (now - lastPresenceNotifyAt < PRESENCE_NOTIFY.cooldownMs) return;
+    lastPresenceNotifyAt = now;
+
+    const owner = await client.users.fetch(PRESENCE_NOTIFY.ownerUserId).catch(() => null);
+    if (!owner) return;
+    const targetName = newPresence.user?.globalName || newPresence.user?.username || 'ktoś';
+    await owner.send({ content: `🟢 ${targetName} weszła online` }).catch(() => {});
+  } catch (err) {
+    console.error('PresenceUpdate notify error:', err);
+  }
 });
 
 client.on(Events.MessageCreate, async (message) => {
