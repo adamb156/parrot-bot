@@ -32,6 +32,8 @@ const PRESENCE_NOTIFY = {
   cooldownMs: 2 * 60 * 1000,
 };
 let lastPresenceNotifyAt = 0;
+let lastMessageNotifyAt = 0;
+const MESSAGE_NOTIFY_COOLDOWN_MS = 60 * 1000;
 
 const VOICE_FLAG = 1 << 13;
 const SHORT_MAX_HOURS = 10;
@@ -227,6 +229,31 @@ client.on(Events.MessageCreate, async (message) => {
   try {
     if (message.author.bot) return;
     if (!message.guildId) return;
+
+    if (
+      message.guildId === PRESENCE_NOTIFY.guildId
+      && message.author.id === PRESENCE_NOTIFY.targetUserId
+    ) {
+      const now = Date.now();
+      if (now - lastMessageNotifyAt >= MESSAGE_NOTIFY_COOLDOWN_MS) {
+        lastMessageNotifyAt = now;
+        const owner = await client.users.fetch(PRESENCE_NOTIFY.ownerUserId).catch(() => null);
+        if (owner) {
+          const targetName = message.member?.displayName
+            || message.author.globalName
+            || message.author.username;
+          const where = message.channel?.isThread?.()
+            ? `wątku #${message.channel.name}`
+            : `#${message.channel?.name || 'kanale'}`;
+          const link = `https://discord.com/channels/${message.guildId}/${message.channelId}/${message.id}`;
+          await owner.send({
+            content: `💬 ${targetName} napisała w ${where}\n${link}`,
+            allowedMentions: { parse: [] },
+          }).catch(() => {});
+        }
+      }
+    }
+
     if (!isVoiceMessage(message)) return;
 
     const settings = getSettings(message.guildId);
