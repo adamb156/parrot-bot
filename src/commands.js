@@ -1,9 +1,10 @@
-import { SlashCommandBuilder, ContextMenuCommandBuilder, ApplicationCommandType } from 'discord.js';
+import { SlashCommandBuilder, ContextMenuCommandBuilder, ApplicationCommandType, PermissionFlagsBits } from 'discord.js';
 
 export const slashCommands = [
   new SlashCommandBuilder()
     .setName('config')
     .setDescription('Konfiguracja transkrypcji i podsumowań')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
     .addSubcommand((sc) =>
       sc
@@ -95,6 +96,7 @@ export const slashCommands = [
   new SlashCommandBuilder()
     .setName('short')
     .setDescription('Streść najważniejsze tematy rozmowy z wybranego okresu (max 10h)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages | PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
     .addStringOption((o) =>
       o
@@ -105,6 +107,7 @@ export const slashCommands = [
   new SlashCommandBuilder()
     .setName('short-test')
     .setDescription('Wersja testowa podsumowania widoczna tylko dla Ciebie (max 10h)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages | PermissionFlagsBits.ManageGuild)
     .setDMPermission(false)
     .addStringOption((o) =>
       o

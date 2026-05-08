@@ -20,27 +20,14 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildPresences,
   ],
   partials: [Partials.Message, Partials.Channel],
 });
-
-const PRESENCE_NOTIFY = {
-  guildId: '1405978706643652760',
-  targetUserId: '1496065262062141553', // anetka5083
-  ownerUserId: '614510122848485437',   // borat9047
-  cooldownMs: 2 * 60 * 1000,
-};
-let lastPresenceNotifyAt = 0;
-let lastMessageNotifyAt = 0;
-const MESSAGE_NOTIFY_COOLDOWN_MS = 60 * 1000;
 
 const VOICE_FLAG = 1 << 13;
 const SHORT_MAX_HOURS = 10;
 const SHORT_COOLDOWN_SEC = 10 * 60;
 const shortCooldownByChannel = new Map();
-const SHORT_ALLOWED_USERNAME = 'borat9047';
-const SHORT_CONFIG_SUBCOMMANDS = new Set(['short-auto', 'short-topic-threshold', 'short-auto-show']);
 
 function isVoiceMessage(message) {
   if (typeof message.flags?.has === 'function' && MessageFlags?.IsVoiceMessage !== undefined) {
@@ -62,10 +49,6 @@ function userHasAccess(member, settings) {
   if (!settings.allowed_role_id) return true;
   if (!member) return false;
   return member.roles.cache.has(settings.allowed_role_id);
-}
-
-function isShortAllowedUser(user) {
-  return user?.username === SHORT_ALLOWED_USERNAME;
 }
 
 function isModeratorOrAdmin(interaction) {
@@ -185,7 +168,7 @@ async function collectMessagesFromPeriod(channel, periodMs) {
 }
 
 function canUseShort(interaction) {
-  return isModeratorOrAdmin(interaction) || isShortAllowedUser(interaction.user);
+  return isModeratorOrAdmin(interaction);
 }
 
 client.once(Events.ClientReady, (c) => {
@@ -193,66 +176,10 @@ client.once(Events.ClientReady, (c) => {
   startAutoSummaryScheduler(c);
 });
 
-client.on(Events.PresenceUpdate, async (oldPresence, newPresence) => {
-  try {
-    if (!newPresence) return;
-    if (newPresence.guild?.id !== PRESENCE_NOTIFY.guildId) return;
-    if (newPresence.userId !== PRESENCE_NOTIFY.targetUserId) return;
-
-    const oldStatus = oldPresence?.status || 'offline';
-    const newStatus = newPresence.status || 'offline';
-    if (oldStatus !== 'offline') return;
-    if (newStatus === 'offline') return;
-
-    const now = Date.now();
-    if (now - lastPresenceNotifyAt < PRESENCE_NOTIFY.cooldownMs) return;
-    lastPresenceNotifyAt = now;
-
-    const owner = await client.users.fetch(PRESENCE_NOTIFY.ownerUserId).catch(() => null);
-    if (!owner) return;
-    const targetName = newPresence.user?.globalName || newPresence.user?.username || 'kto\u015b';
-    const statusLabel = newStatus === 'online' ? 'online'
-      : newStatus === 'idle' ? 'Zaraz wracam'
-      : newStatus === 'dnd' ? 'Nie przeszkadzac'
-      : newStatus;
-    const emoji = newStatus === 'online' ? '\ud83d\udfe2'
-      : newStatus === 'idle' ? '\ud83c\udf19'
-      : newStatus === 'dnd' ? '\ud83d\udd34'
-      : '\u26aa';
-    await owner.send({ content: `${emoji} ${targetName} pojawi\u0142a si\u0119 (${statusLabel})` }).catch(() => {});
-  } catch (err) {
-    console.error('PresenceUpdate notify error:', err);
-  }
-});
-
 client.on(Events.MessageCreate, async (message) => {
   try {
     if (message.author.bot) return;
     if (!message.guildId) return;
-
-    if (
-      message.guildId === PRESENCE_NOTIFY.guildId
-      && message.author.id === PRESENCE_NOTIFY.targetUserId
-    ) {
-      const now = Date.now();
-      if (now - lastMessageNotifyAt >= MESSAGE_NOTIFY_COOLDOWN_MS) {
-        lastMessageNotifyAt = now;
-        const owner = await client.users.fetch(PRESENCE_NOTIFY.ownerUserId).catch(() => null);
-        if (owner) {
-          const targetName = message.member?.displayName
-            || message.author.globalName
-            || message.author.username;
-          const where = message.channel?.isThread?.()
-            ? `wątku #${message.channel.name}`
-            : `#${message.channel?.name || 'kanale'}`;
-          const link = `https://discord.com/channels/${message.guildId}/${message.channelId}/${message.id}`;
-          await owner.send({
-            content: `💬 ${targetName} napisała w ${where}\n${link}`,
-            allowedMentions: { parse: [] },
-          }).catch(() => {});
-        }
-      }
-    }
 
     if (!isVoiceMessage(message)) return;
 
@@ -504,8 +431,7 @@ async function handleConfig(interaction) {
   const sub = interaction.options.getSubcommand();
   const guildId = interaction.guildId;
 
-  const canUseShortConfig = SHORT_CONFIG_SUBCOMMANDS.has(sub) && canUseShort(interaction);
-  if (!isModeratorOrAdmin(interaction) && !canUseShortConfig) {
+  if (!isModeratorOrAdmin(interaction)) {
     return await interaction.reply({
       content: '⛔ Ta komenda jest dostępna tylko dla moderatora/admina.',
       ephemeral: true,
